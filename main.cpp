@@ -17,17 +17,32 @@
 #include <iostream>
 #include <memory>
 #include <vector>
+#include <fstream>
 
 using namespace std;
 
+#define MAX_ARGS 10
 
+enum ArgType { 
+    AUnknown, 
+    AHandle, 
+    AAnsiStr, 
+    AWideStr, 
+    AUint4, 
+    AInt4,
+    AUintSz,  // pointer size
+    AIntSz
+};
 
 struct FuncDescriptor
 {
-    FuncDescriptor(const char* _name, int acount) : name(_name), argCount(acount) 
-    {}
-    const char* name = nullptr;
+    FuncDescriptor(const string& _name, int acount) : name(_name), argCount(acount) 
+    {
+        memset(argTypes, 0, sizeof(argTypes));
+    }
+    string name;
     int argCount = 0;
+    ArgType argTypes[MAX_ARGS];
     void* trampoline = nullptr;
 };
 
@@ -64,25 +79,106 @@ uintptr_t callOriginal(FuncDescriptor* d, uintptr_t args[])
 }
 
 
+
 uintptr_t generic_hook(FuncDescriptor* d, uintptr_t args[])
 {
-    cout << d->name << endl;
+    // write a log line with the arguments
+    cout << d->name << "(";
+    for(int i = 0; i < d->argCount; ++i)
+    {
+        switch(d->argTypes[i]) {
+        case AHandle: cout << hex << args[i] << dec; break;
+        case AAnsiStr: cout << '"' << (char*)args[i] << '"'; break;
+        case AWideStr: {
+            wchar_t* ws = (wchar_t*)args[i];
+            int len = wcslen(ws);
+            string toa;
+            toa.resize(len);
+            for(int j = 0; j < len; ++j)
+                toa[j] = (char)ws[j]; // just truncate it for now
+            cout << 'L"' << toa << '"';
+        }
+        break;
+        case AUint4: cout << (uint32_t)args[i]; break;
+        case AInt4: cout << (int32_t)args[i]; break;
+        case AUintSz: cout << (uintptr_t)args[i]; break;    
+        case AIntSz: cout << (intptr_t)args[i]; break;
+        }
+        if (i < d->argCount-1) // don't add comma in the last one
+            cout << ", ";
+    }
+    cout << ")" << endl;
+
     return callOriginal(d, args);
 };
 
 
 
-#define MAX_ARGS 10
+
 #define DESCRIPTOR_PLACEHOLDER 0x42434445
 
+uintptr_t WINAPI hook_entry0(uintptr_t a1)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[1] = {0};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry1(uintptr_t a1)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[1] = {a1};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry2(uintptr_t a1, uintptr_t a2)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[2] = {a1,a2};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry3(uintptr_t a1, uintptr_t a2, uintptr_t a3)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[3] = {a1,a2,a3};
+    return generic_hook(d, args);
+}
 uintptr_t WINAPI hook_entry4(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4)
 {
     FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
     uintptr_t args[4] = {a1,a2,a3,a4};
     return generic_hook(d, args);
 }
+uintptr_t WINAPI hook_entry5(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[5] = {a1,a2,a3,a4,a5};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry6(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[6] = {a1,a2,a3,a4,a5,a6};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry7(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[7] = {a1,a2,a3,a4,a5,a6,a7};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry8(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7, uintptr_t a8)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[8] = {a1,a2,a3,a4,a5,a6,a7,a8};
+    return generic_hook(d, args);
+}
+uintptr_t WINAPI hook_entry9(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7, uintptr_t a8, uintptr_t a9)
+{
+    FuncDescriptor* d = (FuncDescriptor*)DESCRIPTOR_PLACEHOLDER;
+    uintptr_t args[9] = {a1,a2,a3,a4,a5,a6,a7,a8,a9};
+    return generic_hook(d, args);
+}
 
-LPVOID g_entryFuncs[10] = { nullptr, nullptr, nullptr, nullptr, hook_entry4, nullptr, nullptr, nullptr, nullptr, nullptr };
+LPVOID g_entryFuncs[10] = { hook_entry0, hook_entry1, hook_entry2, hook_entry3, hook_entry4, hook_entry5, hook_entry6, hook_entry7, hook_entry8, hook_entry9 };
 
 
 
@@ -107,16 +203,75 @@ private:
     vector<char*> m_allocs; 
 
 public:
+    bool parseApis(const string& filename);
     bool init();
     bool createHook(const char* moduleName, const char* funcName);
 };
+
+vector<string> split(const string& s)
+{
+    vector<string> r;
+    bool inSpace = false;
+    size_t start = 0;
+    for(size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == ' ') {
+            if (!inSpace) {
+                r.push_back(s.substr(start, i-start));
+                inSpace = true;
+            }
+            start = i+1;
+        }
+        else
+            inSpace = false;
+    }
+    if (start < s.size())
+        r.push_back(s.substr(start, s.size()-start));
+    return r;
+}
+
+bool WinHooks::parseApis(const string& filename)
+{
+    ifstream ifs(filename.c_str());
+    if (!ifs.good())
+        return false;
+    while (!ifs.eof())
+    {
+        string line;
+        getline(ifs, line);
+        if (line.size() == 0)
+            continue;
+        vector<string> sp = split(line);
+        if (sp.size() < 2)
+            continue;
+        auto* d = new FuncDescriptor(sp[1], sp.size() - 2);
+        
+        for(size_t i = 0; i < sp.size() - 2; ++i) 
+        {
+            string type = sp[i+2];
+            if (type == "HANDLE")      d->argTypes[i] = AHandle;
+            else if (type == "ASTR")   d->argTypes[i] = AAnsiStr;
+            else if (type == "WSTR")   d->argTypes[i] = AWideStr;
+            else if (type == "UINT4")  d->argTypes[i] = AUint4;
+            else if (type == "INT4")   d->argTypes[i] = AInt4;
+            else if (type == "UINTSZ") d->argTypes[i] = AUintSz;
+            else if (type == "INTSZ")  d->argTypes[i] = AIntSz;
+            else
+                return false;
+        }
+
+        m_knownFuncs[sp[0] + "!" + sp[1]].reset(d);
+    }
+
+    return true;
+}
+
 
 
 #define PAGE_SIZE 4096
 
 bool WinHooks::init()
 {
-    m_knownFuncs["user32.dll!MessageBoxW"].reset( new FuncDescriptor("MessageBoxW", 4) );
+    //m_knownFuncs["user32.dll!MessageBoxW"].reset( new FuncDescriptor("MessageBoxW", 4) );
 
     // initialize the entries 
     LPVOID lastPage = nullptr;
@@ -147,7 +302,8 @@ bool WinHooks::init()
                 entry.start = ip; // set it to the real pointer where the function is
                 continue;
             }
-            if (hde.opcode == 0xe8) {
+            if (hde.opcode == 0xe8) { // relative calls need to be fixed every time we copy the function.
+                // in addition to the 
                 entry.relCalls[entry.relCallsCount++] = sz+1;
             }
 
@@ -237,21 +393,27 @@ bool WinHooks::createHook(const char* moduleName, const char* funcName)
 }
 
 
+
 int main(int argc, char* argv[])
 {
     uintptr_t fp = (uintptr_t)hook_entry4;
 
-    WinHooks whook;
-    whook.init();
+    WinHooks wh;
+    wh.parseApis("apis/test.txt");
+    wh.init();
 
-    whook.createHook("user32.dll", "MessageBoxW");
+    wh.createHook("user32.dll", "MessageBoxW");
+    wh.createHook("user32.dll", "MessageBoxA");
 
     MessageBoxW(NULL, L"Message...", L"MinHook Sample", MB_OK);
+    MessageBoxA(NULL, "Message...", "MinHook Sample", MB_OK);
 
 
     return 0;
 }
 
+
+// -------------------------------------------------------------------------
 
 
 typedef int (WINAPI *MESSAGEBOXW)(HWND, LPCWSTR, LPCWSTR, UINT);
@@ -281,6 +443,7 @@ int xmain()
 
     // Expected to tell "Hooked!".
     MessageBoxW(NULL, L"Not hooked...", L"MinHook Sample", MB_OK);
+
 
 
     return 0;

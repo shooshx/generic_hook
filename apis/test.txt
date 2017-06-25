@@ -1,0 +1,2 @@
+user32.dll MessageBoxW HANDLE WSTR WSTR UINT4
+user32.dll MessageBoxA HANDLE ASTR ASTR UINT4
