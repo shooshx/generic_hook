@@ -6,10 +6,12 @@
     #include "minhook/src/hde/hde64.h"
     typedef hde64s HDE;
     #define HDE_DISASM(code, hs) hde64_disasm(code, hs)
+    #define DESCRIPTOR_PLACEHOLDER 0x4243444546474849
 #else
     #include "minhook/src/hde/hde32.h"
     typedef hde32s HDE;
     #define HDE_DISASM(code, hs) hde32_disasm(code, hs)
+    #define DESCRIPTOR_PLACEHOLDER 0x42434445
 #endif
 
 #include <map>
@@ -79,43 +81,9 @@ uintptr_t callOriginal(FuncDescriptor* d, uintptr_t args[])
 }
 
 
-
-uintptr_t generic_hook(FuncDescriptor* d, uintptr_t args[])
-{
-    // write a log line with the arguments
-    cout << d->name << "(";
-    for(int i = 0; i < d->argCount; ++i)
-    {
-        switch(d->argTypes[i]) {
-        case AHandle: cout << hex << args[i] << dec; break;
-        case AAnsiStr: cout << '"' << (char*)args[i] << '"'; break;
-        case AWideStr: {
-            wchar_t* ws = (wchar_t*)args[i];
-            int len = wcslen(ws);
-            string toa;
-            toa.resize(len);
-            for(int j = 0; j < len; ++j)
-                toa[j] = (char)ws[j]; // just truncate it for now
-            cout << 'L"' << toa << '"';
-        }
-        break;
-        case AUint4: cout << (uint32_t)args[i]; break;
-        case AInt4: cout << (int32_t)args[i]; break;
-        case AUintSz: cout << (uintptr_t)args[i]; break;    
-        case AIntSz: cout << (intptr_t)args[i]; break;
-        }
-        if (i < d->argCount-1) // don't add comma in the last one
-            cout << ", ";
-    }
-    cout << ")" << endl;
-
-    return callOriginal(d, args);
-};
+uintptr_t generic_hook(FuncDescriptor* d, uintptr_t args[]);
 
 
-
-
-#define DESCRIPTOR_PLACEHOLDER 0x42434445
 
 uintptr_t WINAPI hook_entry0(uintptr_t a1)
 {
@@ -181,6 +149,38 @@ uintptr_t WINAPI hook_entry9(uintptr_t a1, uintptr_t a2, uintptr_t a3, uintptr_t
 LPVOID g_entryFuncs[10] = { hook_entry0, hook_entry1, hook_entry2, hook_entry3, hook_entry4, hook_entry5, hook_entry6, hook_entry7, hook_entry8, hook_entry9 };
 
 
+uintptr_t generic_hook(FuncDescriptor* d, uintptr_t args[])
+{
+    // write a log line with the arguments
+    cout << d->name << "(";
+    for (int i = 0; i < d->argCount; ++i)
+    {
+        switch (d->argTypes[i]) {
+        case AHandle: cout << hex << args[i] << dec; break;
+        case AAnsiStr: cout << '"' << (char*)args[i] << '"'; break;
+        case AWideStr: {
+            wchar_t* ws = (wchar_t*)args[i];
+            auto len = wcslen(ws);
+            string toa;
+            toa.resize(len);
+            for (size_t j = 0; j < len; ++j)
+                toa[j] = (char)ws[j]; // just truncate it for now
+            cout << "L\"" << toa << '"';
+        }
+                       break;
+        case AUint4: cout << (uint32_t)args[i]; break;
+        case AInt4: cout << (int32_t)args[i]; break;
+        case AUintSz: cout << (uintptr_t)args[i]; break;
+        case AIntSz: cout << (intptr_t)args[i]; break;
+        }
+        if (i < d->argCount - 1) // don't add comma in the last one
+            cout << ", ";
+    }
+    cout << ")" << endl;
+
+    return callOriginal(d, args);
+};
+
 
 class WinHooks
 {
@@ -201,6 +201,8 @@ private:
     // char* since we do arithmatics using byte size
     char *m_writePos = nullptr, *m_allocEnd = nullptr;
     vector<char*> m_allocs; 
+
+    SYSTEM_INFO m_si;
 
 public:
     bool parseApis(const string& filename);
@@ -243,7 +245,7 @@ bool WinHooks::parseApis(const string& filename)
         vector<string> sp = split(line);
         if (sp.size() < 2)
             continue;
-        auto* d = new FuncDescriptor(sp[1], sp.size() - 2);
+        auto* d = new FuncDescriptor(sp[1], (int)sp.size() - 2);
         
         for(size_t i = 0; i < sp.size() - 2; ++i) 
         {
@@ -267,11 +269,10 @@ bool WinHooks::parseApis(const string& filename)
 
 
 
-#define PAGE_SIZE 4096
 
 bool WinHooks::init()
 {
-    //m_knownFuncs["user32.dll!MessageBoxW"].reset( new FuncDescriptor("MessageBoxW", 4) );
+    GetSystemInfo(&m_si);
 
     // initialize the entries 
     LPVOID lastPage = nullptr;
@@ -288,10 +289,10 @@ bool WinHooks::init()
         // read the function untill getting to ret to find its size
         while(true) 
         {
-            LPVOID thisPage = (LPVOID)((uintptr_t)ip & ~(PAGE_SIZE-1));
+            LPVOID thisPage = (LPVOID)((uintptr_t)ip & ~(m_si.dwPageSize -1));
             if (thisPage != lastPage) {
                 DWORD prev = 0;
-                VirtualProtect(thisPage, PAGE_SIZE, PAGE_EXECUTE_READ, &prev);
+                VirtualProtect(thisPage, m_si.dwPageSize, PAGE_EXECUTE_READ, &prev);
                 lastPage = thisPage;
             }
 
@@ -328,7 +329,7 @@ bool WinHooks::init()
         for (;ip < endp; ++ip) {
             uintptr_t *uip = (uintptr_t*)ip;
             if ( *uip == DESCRIPTOR_PLACEHOLDER) {
-                entry.placeHolderAt = ip - (char*)entry.start;
+                entry.placeHolderAt = (int)(ip - (char*)entry.start);
                 break;
             }
         }
@@ -353,10 +354,10 @@ bool WinHooks::createHook(const char* moduleName, const char* funcName)
     auto& entry = m_entryFuncs[descriptor->argCount];
 
     if (m_writePos == nullptr || m_writePos + entry.sz) { 
-        m_writePos = (char*)VirtualAlloc(NULL, PAGE_SIZE, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
+        m_writePos = (char*)VirtualAlloc(NULL, m_si.dwAllocationGranularity, MEM_COMMIT, PAGE_EXECUTE_READWRITE);
         if (m_writePos == NULL)
             return false;
-        m_allocEnd = m_writePos + PAGE_SIZE;
+        m_allocEnd = m_writePos + m_si.dwAllocationGranularity;
         m_allocs.push_back(m_writePos);
     }
 
@@ -368,8 +369,8 @@ bool WinHooks::createHook(const char* moduleName, const char* funcName)
     *(LPVOID*)(newFuncAt + entry.placeHolderAt) = descriptor;
     // fix the relative calls
     for(int i = 0; i < entry.relCallsCount; ++i) {
-        intptr_t* at = (intptr_t*)(newFuncAt + entry.relCalls[i]);
-        *at = (char*)entry.start + *at - (char*)newFuncAt;
+        int32_t* at = (int32_t*)(newFuncAt + entry.relCalls[i]);
+        *at = (int)((char*)entry.start + *at - (char*)newFuncAt);
     }
 
 
